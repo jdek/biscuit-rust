@@ -577,7 +577,12 @@ where
         }
     }
 
-    previous_blocks_sig_versions.max().unwrap_or(0)
+    // koan: every block is signed in the format that covers the signature of
+    // the block before it (this was `previous_blocks_sig_versions.max()`, 0
+    // for Ed25519 blocks with no new Datalog), so a revocation id is one
+    // block's at one place in one chain
+    let _ = previous_blocks_sig_versions;
+    DATALOG_3_3_SIGNATURE_VERSION
 }
 
 #[cfg(test)]

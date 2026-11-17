@@ -499,6 +499,13 @@ pub struct Block<NK = PublicKey, EK = PublicKey> {
     pub version: u32,
 }
 
+impl<NK, EK> Block<NK, EK> {
+    /// koan: the key the next block (or the proof) is signed with.
+    pub fn next_key(&self) -> &NK {
+        &self.next_key
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ExternalSignature<EK = PublicKey> {
     pub(crate) public_key: EK,
