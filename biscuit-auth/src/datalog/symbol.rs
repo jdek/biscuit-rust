@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 //! Symbol table implementation
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::token::default_symbol_table;
@@ -17,7 +17,19 @@ pub type SymbolIndex = u64;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SymbolTable {
     symbols: Vec<String>,
+    /// koan: each symbol's position in `symbols` (a lookup was a linear scan,
+    /// so interning n strings took O(n^2))
+    index: HashMap<String, usize>,
     pub(crate) public_keys: PublicKeys,
+}
+
+/// koan: the positions of `symbols` (the first of a repeated one).
+fn index_of(symbols: &[String]) -> HashMap<String, usize> {
+    let mut index = HashMap::with_capacity(symbols.len());
+    for (i, s) in symbols.iter().enumerate() {
+        index.entry(s.clone()).or_insert(i);
+    }
+    index
 }
 
 const DEFAULT_SYMBOLS: [&str; 28] = [
@@ -57,6 +69,7 @@ impl SymbolTable {
     pub fn new() -> Self {
         SymbolTable {
             symbols: vec![],
+            index: HashMap::new(),
             public_keys: PublicKeys::new(),
         }
     }
@@ -70,6 +83,7 @@ impl SymbolTable {
         }
 
         Ok(SymbolTable {
+            index: index_of(&symbols),
             symbols,
             public_keys: PublicKeys::new(),
         })
@@ -88,6 +102,10 @@ impl SymbolTable {
         if !self.is_disjoint(other) {
             return Err(error::Format::SymbolTableOverlap);
         }
+        let at = self.symbols.len();
+        for (i, s) in other.symbols.iter().enumerate() {
+            self.index.entry(s.clone()).or_insert(at + i);
+        }
         self.symbols.extend(other.symbols.iter().cloned());
         self.public_keys.extend(&other.public_keys)?;
         Ok(())
@@ -98,10 +116,11 @@ impl SymbolTable {
             return index as u64;
         }
 
-        match self.symbols.iter().position(|sym| sym.as_str() == s) {
+        match self.index.get(s) {
             Some(index) => (OFFSET + index) as u64,
             None => {
                 self.symbols.push(s.to_string());
+                self.index.insert(s.to_string(), self.symbols.len() - 1);
                 (OFFSET + (self.symbols.len() - 1)) as u64
             }
         }
@@ -117,10 +136,7 @@ impl SymbolTable {
             return Some(index as u64);
         }
 
-        self.symbols
-            .iter()
-            .position(|sym| sym.as_str() == s)
-            .map(|i| (OFFSET + i) as SymbolIndex)
+        self.index.get(s).map(|i| (OFFSET + i) as SymbolIndex)
     }
 
     pub fn strings(&self) -> Vec<String> {
@@ -134,6 +150,8 @@ impl SymbolTable {
     pub fn split_at(&mut self, offset: usize) -> SymbolTable {
         let mut table = SymbolTable::new();
         table.symbols = self.symbols.split_off(offset);
+        table.index = index_of(&table.symbols);
+        self.index = index_of(&self.symbols);
         table
     }
 
